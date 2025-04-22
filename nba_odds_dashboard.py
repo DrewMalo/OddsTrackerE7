@@ -57,38 +57,40 @@ for game in odds_data:
 
     for bookmaker in game['bookmakers']:
         book = bookmaker['title']
-        outcomes_by_market = {m['key']: m['outcomes'] for m in bookmaker['markets']}
+        for market in bookmaker['markets']:
+            market_key = market['key']
+            for outcome in market['outcomes']:
+                if market_key == 'h2h':
+                    team = outcome['name']
+                    row[f"{book} ML - {team}"] = outcome['price']
+                    row[f"{book} % - {team}"] = round(implied_prob(outcome['price']) * 100, 1)
+                elif market_key == 'spreads':
+                    team = outcome['name']
+                    row[f"{book} Spread - {team}"] = f"{outcome['point']} ({outcome['price']})"
+                elif market_key == 'totals':
+                    label = 'Over' if 'Over' in outcome['name'] else 'Under'
+                    row[f"{book} Total - {label}"] = f"{outcome['point']} ({outcome['price']})"
 
-        for outcome in outcomes_by_market.get('h2h', []):
-            team = outcome['name']
-            row[f"{book} ML - {team}"] = outcome['price']
-            row[f"{book} % - {team}"] = round(implied_prob(outcome['price']) * 100, 1)
-
-        for outcome in outcomes_by_market.get('spreads', []):
-            team = outcome['name']
-            row[f"{book} Spread - {team}"] = f"{outcome['point']} ({outcome['price']})"
-
-        for outcome in outcomes_by_market.get('totals', []):
-            label = 'Over' if 'Over' in outcome['name'] else 'Under'
-            row[f"{book} Total - {label}"] = f"{outcome['point']} ({outcome['price']})"
-
-    # Fetch props for each game (per event_id)
-    player_markets = fetch_player_props(game['id'])
-    for market in player_markets:
-        if market['key'] == 'player_points':
-            book = market['bookmaker_key']
-            for outcome in market.get('outcomes', []):
-                props.append({
-                    'Timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
-                    'Matchup': matchup,
-                    'Start Time': start_time,
-                    'Team': game['home_team'] if outcome['name'] in game['home_team'] else game['away_team'],
-                    'Bookmaker': book,
-                    'Player': outcome['name'],
-                    'Prop': 'Points',
-                    'Line': outcome.get('point'),
-                    'Odds': outcome.get('price')
-                })
+    try:
+        player_markets = fetch_player_props(game['id'])
+        for market in player_markets:
+            if market['key'] == 'player_points':
+                for bookmaker in market.get('bookmakers', []):
+                    book = bookmaker['title']
+                    for outcome in bookmaker.get('outcomes', []):
+                        props.append({
+                            'Timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                            'Matchup': matchup,
+                            'Start Time': start_time,
+                            'Team': game['home_team'] if outcome['name'] in game['home_team'] else game['away_team'],
+                            'Bookmaker': book,
+                            'Player': outcome['name'],
+                            'Prop': 'Points',
+                            'Line': outcome.get('point'),
+                            'Odds': outcome.get('price')
+                        })
+    except Exception as e:
+        st.warning(f"Failed to load props for game: {matchup}")
 
     games.append(row)
 
