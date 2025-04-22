@@ -1,11 +1,5 @@
-# This script requires the Streamlit environment to run.
-# To resolve the ModuleNotFoundError, ensure you're executing this in a Streamlit-compatible environment.
-
-try:
-    import streamlit as st
-except ModuleNotFoundError:
-    raise ImportError("Streamlit is not installed. Please install it via 'pip install streamlit' to run this app.")
-
+# nba_odds_tracker.py
+import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
@@ -18,8 +12,8 @@ st.title("NBA Odds Tracker \U0001F3C0")
 st.caption("Real-time NBA lines: Moneylines, Spreads, Totals & Player Props from FanDuel, DraftKings, and BetMGM")
 
 # --- API Setup ---
-API_KEY = '0c03cbe55c11b193e6d23407c48cc604'  # the-odds-api.com
-BALLDONTLIE_BASE = '498117bc-f941-454d-a142-6aa8b6778cec'
+API_KEY = '0c03cbe55c11b193e6d23407c48cc604' '498117bc-f941-454d-a142-6aa8b6778cec'  # the-odds-api.com
+BALLDONTLIE_BASE = 'https://www.balldontlie.io/api/v1'  # correct API base
 API_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/odds'
 API_EVENT_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/markets'
 
@@ -117,6 +111,7 @@ df_props = pd.DataFrame(props)
 
 # --- Save to CSV (disabled for Streamlit Cloud) ---
 csv_file = 'nba_odds_history.csv'
+# Disabled CSV saving for deployment compatibility
 
 # --- Tabs Layout ---
 tab1, tab2, tab3, tab4 = st.tabs(["\U0001F4CA Game Odds", "\U0001F4C8 Line Movement", "\U0001F3AF Player Props", "\U0001F9D1‍\U0001F3CB️ Explorer"])
