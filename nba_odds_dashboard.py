@@ -11,7 +11,7 @@ st.caption("Live odds + player/team breakdowns from public sources and sportsboo
 # --- Tabs Layout ---
 tab1, tab2, tab3 = st.tabs(["📊 Live Odds", "📈 Player Stats", "🤖 Predictive Analytics"])
 
-# --- Tab 1: Live Odds from the-odds-api ---
+# --- Tab 1: Live Odds from the-odds-api (merged with balldontlie) ---
 with tab1:
     st.subheader("📊 Real-Time NBA Odds")
     ODDS_API_KEY = st.secrets["ODDS_API_KEY"] if "ODDS_API_KEY" in st.secrets else "0c03cbe55c11b193e6d23407c48cc604"
@@ -30,12 +30,33 @@ with tab1:
 
         try:
             res = requests.get(ODDS_ENDPOINT, params=odds_params)
+
+            # Fetch today's NBA games from balldontlie
+            today = datetime.utcnow().strftime('%Y-%m-%d')
+            balldontlie_games = []
+            try:
+                bdl_url = f"https://www.balldontlie.io/api/v1/games?start_date={today}&end_date={today}"
+                bdl_res = requests.get(bdl_url)
+                bdl_res.raise_for_status()
+                balldontlie_games = bdl_res.json().get("data", [])
+            except Exception as e:
+                st.warning(f"Could not fetch today's games from balldontlie: {e}")
             res.raise_for_status()
             odds_data = res.json()
 
             if odds_data:
-                odds_rows = []
+                # Cross-check Odds API data with balldontlie games
+                game_matchups = []
                 for game in odds_data:
+                    for bdl_game in balldontlie_games:
+                        if bdl_game['home_team']['full_name'] in game['home_team'] and \
+                           bdl_game['visitor_team']['full_name'] in game['away_team']:
+                            game_matchups.append(game)
+                            break
+                target_games = game_matchups if game_matchups else odds_data
+
+                odds_rows = []
+                for game in target_games:
                     matchup = f"{game['away_team']} @ {game['home_team']}"
                     start_time = datetime.fromisoformat(game['commence_time'].replace("Z", "+00:00"))
                     start_time_local = start_time.strftime('%Y-%m-%d %I:%M %p')
@@ -51,9 +72,11 @@ with tab1:
                                     "Point": out.get('point'),
                                     "Odds": out['price']
                                 })
+
                 df_odds = pd.DataFrame(odds_rows)
                 matchups_today = df_odds['Matchup'].unique()
                 selected_matchup = st.selectbox("Select a matchup to highlight:", matchups_today)
+                st.dataframe(df_odds[df_odds['Matchup'] == selected_matchup].sort_values(by="Bookmaker"))
                 st.dataframe(df_odds[df_odds['Matchup'] == selected_matchup].sort_values(by="Bookmaker"))
             else:
                 st.warning("No odds available right now.")
