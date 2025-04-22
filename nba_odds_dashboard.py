@@ -1,14 +1,21 @@
 # nba_odds_tracker.py
-# ... (all existing code remains unchanged above)
+import streamlit as st
+import pandas as pd
+
+# --- Placeholder data to ensure app runs before full data fetch ---
+df = pd.DataFrame()
+df_props = pd.DataFrame()
+csv_file = 'nba_odds_history.csv'
 
 # --- Tabs Layout ---
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tabs = st.tabs([
     "\U0001F4CA Game Odds",
     "\U0001F4C8 Line Movement",
     "\U0001F3AF Player Props",
     "\U0001F9D1‍\U0001F3CB️ Player Stats",
     "\U0001F3C0 Shooting Averages"
 ])
+tab1, tab2, tab3, tab4, tab5 = tabs
 
 with tab1:
     st.subheader("\U0001F4CA Game Odds: Moneylines, Spreads, Totals")
@@ -21,8 +28,11 @@ with tab1:
             best_col = max(team_cols, key=lambda col: row[col] if pd.notna(row[col]) else -9999)
             styles[df.columns.get_loc(best_col)] = 'background-color: lightgreen'
         return styles
-    df_display = df.style.apply(highlight_best, axis=1)
-    st.dataframe(df_display, use_container_width=True)
+    if not df.empty:
+        df_display = df.style.apply(highlight_best, axis=1)
+        st.dataframe(df_display, use_container_width=True)
+    else:
+        st.info("No game odds data available.")
 
 with tab2:
     st.subheader("\U0001F4C8 Moneyline Line Movement")
@@ -54,22 +64,31 @@ with tab3:
 
 with tab4:
     st.subheader("\U0001F9D1‍\U0001F3CB️ Player Stats from balldontlie.io")
-    stats = get_stats()
-    stats_df = pd.DataFrame(stats['data'])
-    if not stats_df.empty:
-        st.dataframe(stats_df.head(100), use_container_width=True)
-    else:
-        st.info("No player stats available.")
+    try:
+        from nba_odds_tracker import get_stats
+        stats = get_stats()
+        stats_df = pd.DataFrame(stats['data'])
+        if not stats_df.empty:
+            st.dataframe(stats_df.head(100), use_container_width=True)
+        else:
+            st.info("No player stats available.")
+    except Exception as e:
+        st.error("Error loading player stats.")
 
 with tab5:
     st.subheader("\U0001F3C0 Shooting Averages (2024 Regular Season)")
-    shooting = get_shooting_averages()
-    shooting_df = pd.DataFrame(shooting['data'])
-    if not shooting_df.empty:
-        st.dataframe(shooting_df, use_container_width=True)
-    else:
-        st.info("No shooting averages data available.")
+    try:
+        from nba_odds_tracker import get_shooting_averages
+        shooting = get_shooting_averages()
+        shooting_df = pd.DataFrame(shooting['data'])
+        if not shooting_df.empty:
+            st.dataframe(shooting_df, use_container_width=True)
+        else:
+            st.info("No shooting averages data available.")
+    except Exception as e:
+        st.error("Error loading shooting averages.")
 
 # --- Footer ---
 st.markdown("---")
 st.caption("Updated every 60 seconds — Line movement storage disabled on Streamlit Cloud for compatibility.")
+
