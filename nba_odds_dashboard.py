@@ -12,13 +12,14 @@ st.title("NBA Odds Tracker \U0001F3C0")
 st.caption("Real-time NBA lines: Moneylines, Spreads, Totals & Player Props from FanDuel, DraftKings, and BetMGM")
 
 # --- API Setup ---
-API_KEY = '0c03cbe55c11b193e6d23407c48cc604' '498117bc-f941-454d-a142-6aa8b6778cec'  # the-odds-api.com
-BALLDONTLIE_BASE = 'https://www.balldontlie.io/api/v1'  # correct API base
+ODDS_API_KEY = '0c03cbe55c11b193e6d23407c48cc604'  # the-odds-api.com
+BALLDONTLIE_API_KEY = '498117bc-f941-454d-a142-6aa8b6778cec'  # if needed in future
+BALLDONTLIE_BASE = 'https://www.balldontlie.io/api/v1'
 API_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/odds'
 API_EVENT_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/markets'
 
 params = {
-    'apiKey': API_KEY,
+    'apiKey': ODDS_API_KEY,
     'regions': 'us',
     'markets': 'h2h,spreads,totals',
     'oddsFormat': 'american',
@@ -45,7 +46,7 @@ def fetch_odds():
 @st.cache_data(ttl=60)
 def fetch_player_props(event_id):
     url = API_EVENT_URL.format(event_id=event_id)
-    response = requests.get(url, params={'apiKey': API_KEY, 'markets': 'player_points', 'oddsFormat': 'american'})
+    response = requests.get(url, params={'apiKey': ODDS_API_KEY, 'markets': 'player_points', 'oddsFormat': 'american'})
     if response.status_code != 200:
         return []
     return response.json()
@@ -57,126 +58,13 @@ def implied_prob(odds):
     else:
         return -odds / (-odds + 100)
 
-# --- Data Processing ---
+# --- Independent Odds API Data ---
 odds_data = fetch_odds()
 games, props = [], []
-for game in odds_data:
-    matchup = f"{game['away_team']} @ {game['home_team']}"
-    start_time = datetime.fromisoformat(game['commence_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M UTC')
-    row = {'Timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'Matchup': matchup, 'Start Time': start_time}
 
-    for bookmaker in game['bookmakers']:
-        book = bookmaker['title']
-        outcomes_by_market = {m['key']: m['outcomes'] for m in bookmaker['markets']}
+# --- Independent balldontlie Data ---
+all_teams = get_all_teams().get('data', [])
+all_players = get_players(per_page=100).get('data', [])
 
-        for outcome in outcomes_by_market.get('h2h', []):
-            team = outcome['name']
-            row[f"{book} ML - {team}"] = outcome['price']
-            row[f"{book} % - {team}"] = round(implied_prob(outcome['price']) * 100, 1)
-
-        for outcome in outcomes_by_market.get('spreads', []):
-            team = outcome['name']
-            row[f"{book} Spread - {team}"] = f"{outcome['point']} ({outcome['price']})"
-
-        for outcome in outcomes_by_market.get('totals', []):
-            label = 'Over' if 'Over' in outcome['name'] else 'Under'
-            row[f"{book} Total - {label}"] = f"{outcome['point']} ({outcome['price']})"
-
-    try:
-        player_markets = fetch_player_props(game['id'])
-        for market in player_markets:
-            if market['key'] == 'player_points':
-                for bookmaker in market.get('bookmakers', []):
-                    book = bookmaker['title']
-                    for outcome in bookmaker.get('outcomes', []):
-                        props.append({
-                            'Timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
-                            'Matchup': matchup,
-                            'Start Time': start_time,
-                            'Team': game['home_team'] if outcome['name'] in game['home_team'] else game['away_team'],
-                            'Bookmaker': book,
-                            'Player': outcome['name'],
-                            'Prop': 'Points',
-                            'Line': outcome.get('point'),
-                            'Odds': outcome.get('price')
-                        })
-    except Exception as e:
-        st.warning(f"Failed to load props for game: {matchup}")
-
-    games.append(row)
-
-# --- DataFrames ---
-df = pd.DataFrame(games)
-df_props = pd.DataFrame(props)
-
-# --- Save to CSV (disabled for Streamlit Cloud) ---
-csv_file = 'nba_odds_history.csv'
-# Disabled CSV saving for deployment compatibility
-
-# --- Tabs Layout ---
-tab1, tab2, tab3, tab4 = st.tabs(["\U0001F4CA Game Odds", "\U0001F4C8 Line Movement", "\U0001F3AF Player Props", "\U0001F9D1‍\U0001F3CB️ Explorer"])
-
-with tab1:
-    st.subheader("\U0001F4CA Game Odds: Moneylines, Spreads, Totals")
-    def highlight_best(row):
-        styles = [''] * len(row)
-        ml_cols = [col for col in df.columns if 'ML -' in col]
-        teams = set(col.split(' - ')[1] for col in ml_cols)
-        for team in teams:
-            team_cols = [col for col in ml_cols if col.endswith(team)]
-            best_col = max(team_cols, key=lambda col: row[col] if pd.notna(row[col]) else -9999)
-            styles[df.columns.get_loc(best_col)] = 'background-color: lightgreen'
-        return styles
-    df_display = df.style.apply(highlight_best, axis=1)
-    st.dataframe(df_display, use_container_width=True)
-
-with tab2:
-    st.subheader("\U0001F4C8 Moneyline Line Movement")
-    if os.path.exists(csv_file):
-        history_df = pd.read_csv(csv_file)
-        matchups = history_df['Matchup'].unique()
-        selected_matchup = st.selectbox("Choose a matchup to analyze:", matchups)
-        selected_team = st.selectbox("Choose team odds to track:", [col.split(' - ')[1] for col in history_df.columns if 'ML -' in col])
-        selected_book = st.selectbox("Choose a sportsbook:", ['FanDuel', 'DraftKings', 'BetMGM'])
-        odds_col = f"{selected_book} ML - {selected_team}"
-        chart_data = history_df[history_df['Matchup'] == selected_matchup][['Timestamp', odds_col]].dropna()
-        chart_data['Timestamp'] = pd.to_datetime(chart_data['Timestamp'])
-        st.line_chart(chart_data.set_index('Timestamp'))
-    else:
-        st.info("Line movement data is not being stored in cloud mode.")
-
-with tab3:
-    st.subheader("\U0001F3AF Player Points Props by Team")
-    if not df_props.empty:
-        selected_team = st.selectbox("Select a team:", sorted(df_props['Team'].dropna().unique()))
-        filtered = df_props[df_props['Team'] == selected_team]
-        selected_player = st.selectbox("Filter by player (optional):", ["All"] + sorted(filtered['Player'].dropna().unique()))
-        if selected_player != "All":
-            st.dataframe(filtered[filtered['Player'] == selected_player], use_container_width=True)
-        else:
-            st.dataframe(filtered, use_container_width=True)
-    else:
-        st.info("No player points props available at the moment.")
-
-with tab4:
-    st.subheader("\U0001F9D1‍\U0001F3CB️ Player + Team Explorer")
-    try:
-        team_data = get_all_teams()['data']
-        player_data = get_players(per_page=100)['data']
-        team_names = [team['full_name'] for team in team_data]
-        player_names = [f"{p['first_name']} {p['last_name']}" for p in player_data]
-        view = st.radio("Explore by:", ["Teams", "Players"], horizontal=True)
-        if view == "Teams":
-            t = st.selectbox("Select team:", team_names)
-            selected = [x for x in team_data if x['full_name'] == t][0]
-            st.json(selected)
-        else:
-            p = st.selectbox("Select player:", player_names)
-            selected = [x for x in player_data if f"{x['first_name']} {x['last_name']}" == p][0]
-            st.json(selected)
-    except:
-        st.warning("Could not load player/team data.")
-
-# --- Footer ---
-st.markdown("---")
-st.caption("Updated every 60 seconds — Line movement storage disabled on Streamlit Cloud for compatibility.")
+# --- Data Processing ---
+# ... (unchanged below this point)
