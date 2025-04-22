@@ -12,11 +12,9 @@ st.title("NBA Odds Tracker \U0001F3C0")
 st.caption("Real-time NBA lines: Moneylines, Spreads, Totals & Player Props from FanDuel, DraftKings, and BetMGM")
 
 # --- API Setup ---
-API_KEY = '0c03cbe55c11b193e6d23407c48cc604'  # the-odds-api.com
-BALLDONTLIE_BASE = 'https://www.balldontlie.io/api/v1'  # correct API base
+API_KEY = '0c03cbe55c11b193e6d23407c48cc604'
 API_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/odds'
 API_EVENT_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/markets'
-
 params = {
     'apiKey': API_KEY,
     'regions': 'us',
@@ -24,14 +22,6 @@ params = {
     'oddsFormat': 'american',
     'bookmakers': 'fanduel,draftkings,betmgm'
 }
-
-@st.cache_data(ttl=600)
-def get_all_teams():
-    return requests.get(f"{BALLDONTLIE_BASE}/teams").json()
-
-@st.cache_data(ttl=600)
-def get_players(per_page=100):
-    return requests.get(f"{BALLDONTLIE_BASE}/players?per_page={per_page}").json()
 
 @st.cache_data(ttl=60)
 def fetch_odds():
@@ -114,7 +104,7 @@ csv_file = 'nba_odds_history.csv'
 # Disabled CSV saving for deployment compatibility
 
 # --- Tabs Layout ---
-tab1, tab2, tab3, tab4 = st.tabs(["\U0001F4CA Game Odds", "\U0001F4C8 Line Movement", "\U0001F3AF Player Props", "\U0001F9D1‍\U0001F3CB️ Explorer"])
+tab1, tab2, tab3 = st.tabs(["\U0001F4CA Game Odds", "\U0001F4C8 Line Movement", "\U0001F3AF Player Props"])
 
 with tab1:
     st.subheader("\U0001F4CA Game Odds: Moneylines, Spreads, Totals")
@@ -157,25 +147,6 @@ with tab3:
             st.dataframe(filtered, use_container_width=True)
     else:
         st.info("No player points props available at the moment.")
-
-with tab4:
-    st.subheader("\U0001F9D1‍\U0001F3CB️ Player + Team Explorer")
-    try:
-        team_data = get_all_teams()['data']
-        player_data = get_players(per_page=100)['data']
-        team_names = [team['full_name'] for team in team_data]
-        player_names = [f"{p['first_name']} {p['last_name']}" for p in player_data]
-        view = st.radio("Explore by:", ["Teams", "Players"], horizontal=True)
-        if view == "Teams":
-            t = st.selectbox("Select team:", team_names)
-            selected = [x for x in team_data if x['full_name'] == t][0]
-            st.json(selected)
-        else:
-            p = st.selectbox("Select player:", player_names)
-            selected = [x for x in player_data if f"{x['first_name']} {x['last_name']}" == p][0]
-            st.json(selected)
-    except:
-        st.warning("Could not load player/team data.")
 
 # --- Footer ---
 st.markdown("---")
