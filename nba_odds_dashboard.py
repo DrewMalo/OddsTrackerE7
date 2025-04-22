@@ -14,7 +14,7 @@ tab1, tab2, tab3 = st.tabs(["📊 Live Odds", "📈 Player Stats", "🤖 Predict
 # --- Tab 1: Live Odds from the-odds-api ---
 with tab1:
     st.subheader("📊 Real-Time NBA Odds")
-    ODDS_API_KEY = st.secrets["ODDS_API_KEY"] if "ODDS_API_KEY" in st.secrets else ""
+    ODDS_API_KEY = st.secrets["ODDS_API_KEY"] if "ODDS_API_KEY" in st.secrets else "0c03cbe55c11b193e6d23407c48cc604"
 
     if not ODDS_API_KEY:
         st.warning("No Odds API key found. Add 'ODDS_API_KEY' to Streamlit secrets to enable odds fetching.")
