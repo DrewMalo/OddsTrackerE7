@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 # --- Title/Header ---
 st.set_page_config(page_title="NBA Odds Tracker", layout="wide")
 st.title("NBA Odds Tracker \U0001F3C0")
-st.caption("Real-time NBA lines: Moneylines, Spreads, Totals from FanDuel, DraftKings, and BetMGM")
+st.caption("Real-time NBA lines: Moneylines, Spreads, Totals & Player Props from FanDuel, DraftKings, and BetMGM")
 
 # --- API Setup ---
 API_KEY = '0c03cbe55c11b193e6d23407c48cc604'
@@ -17,7 +17,15 @@ API_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/odds'
 params = {
     'apiKey': API_KEY,
     'regions': 'us',
-    'markets': 'h2h,spreads,totals',  # Removed 'player_points'
+    'markets': 'h2h,spreads,totals',
+    'oddsFormat': 'american',
+    'bookmakers': 'fanduel,draftkings,betmgm'
+}
+
+player_props_params = {
+    'apiKey': API_KEY,
+    'regions': 'us',
+    'markets': 'player_points',
     'oddsFormat': 'american',
     'bookmakers': 'fanduel,draftkings,betmgm'
 }
@@ -31,6 +39,14 @@ def fetch_odds():
     st.caption(f"Requests remaining: {response.headers.get('x-requests-remaining')}, Used: {response.headers.get('x-requests-used')}")
     return response.json()
 
+@st.cache_data(ttl=60)
+def fetch_player_props():
+    response = requests.get(API_URL, params=player_props_params)
+    if response.status_code != 200:
+        st.error(f"Failed to load player props: {response.status_code} - {response.text}")
+        return []
+    return response.json()
+
 # --- Helper ---
 def implied_prob(odds):
     if odds > 0:
@@ -40,7 +56,8 @@ def implied_prob(odds):
 
 # --- Data Processing ---
 odds_data = fetch_odds()
-games = []
+player_data = fetch_player_props()
+games, props = [], []
 for game in odds_data:
     matchup = f"{game['away_team']} @ {game['home_team']}"
     start_time = datetime.fromisoformat(game['commence_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M UTC')
@@ -65,15 +82,35 @@ for game in odds_data:
 
     games.append(row)
 
+for game in player_data:
+    matchup = f"{game['away_team']} @ {game['home_team']}"
+    start_time = datetime.fromisoformat(game['commence_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M UTC')
+    for bookmaker in game['bookmakers']:
+        book = bookmaker['title']
+        outcomes_by_market = {m['key']: m['outcomes'] for m in bookmaker['markets']}
+        for outcome in outcomes_by_market.get('player_points', []):
+            props.append({
+                'Timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                'Matchup': matchup,
+                'Start Time': start_time,
+                'Team': game['home_team'] if outcome['name'] in game['home_team'] else game['away_team'],
+                'Bookmaker': book,
+                'Player': outcome['name'],
+                'Prop': 'Points',
+                'Line': outcome['point'],
+                'Odds': outcome['price']
+            })
+
 # --- DataFrames ---
 df = pd.DataFrame(games)
+df_props = pd.DataFrame(props)
 
 # --- Save to CSV (disabled for Streamlit Cloud) ---
 csv_file = 'nba_odds_history.csv'
 # Disabled CSV saving for deployment compatibility
 
 # --- Tabs Layout ---
-tab1, tab2 = st.tabs(["\U0001F4CA Game Odds", "\U0001F4C8 Line Movement"])
+tab1, tab2, tab3 = st.tabs(["\U0001F4CA Game Odds", "\U0001F4C8 Line Movement", "\U0001F3AF Player Props"])
 
 with tab1:
     st.subheader("\U0001F4CA Game Odds: Moneylines, Spreads, Totals")
@@ -104,7 +141,19 @@ with tab2:
     else:
         st.info("Line movement data is not being stored in cloud mode.")
 
+with tab3:
+    st.subheader("\U0001F3AF Player Points Props by Team")
+    if not df_props.empty:
+        selected_team = st.selectbox("Select a team:", sorted(df_props['Team'].unique()))
+        filtered = df_props[df_props['Team'] == selected_team]
+        selected_player = st.selectbox("Filter by player (optional):", ["All"] + sorted(filtered['Player'].unique()))
+        if selected_player != "All":
+            st.dataframe(filtered[filtered['Player'] == selected_player], use_container_width=True)
+        else:
+            st.dataframe(filtered, use_container_width=True)
+    else:
+        st.info("No player points props available at the moment.")
+
 # --- Footer ---
 st.markdown("---")
 st.caption("Updated every 60 seconds — Line movement storage disabled on Streamlit Cloud for compatibility.")
-
