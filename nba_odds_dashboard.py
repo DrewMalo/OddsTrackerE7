@@ -1,6 +1,7 @@
 # nba_odds_tracker.py
 import streamlit as st
 import pandas as pd
+import os  # Fix: Import os to use os.path.exists
 
 # --- Placeholder data to ensure app runs before full data fetch ---
 df = pd.DataFrame()
@@ -91,4 +92,3 @@ with tab5:
 # --- Footer ---
 st.markdown("---")
 st.caption("Updated every 60 seconds — Line movement storage disabled on Streamlit Cloud for compatibility.")
-
