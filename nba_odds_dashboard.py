@@ -14,18 +14,11 @@ st.caption("Real-time NBA lines: Moneylines, Spreads, Totals & Player Props from
 # --- API Setup ---
 API_KEY = '0c03cbe55c11b193e6d23407c48cc604'
 API_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/odds'
+API_EVENT_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/markets'
 params = {
     'apiKey': API_KEY,
     'regions': 'us',
     'markets': 'h2h,spreads,totals',
-    'oddsFormat': 'american',
-    'bookmakers': 'fanduel,draftkings,betmgm'
-}
-
-player_props_params = {
-    'apiKey': API_KEY,
-    'regions': 'us',
-    'markets': 'player_points',
     'oddsFormat': 'american',
     'bookmakers': 'fanduel,draftkings,betmgm'
 }
@@ -40,10 +33,10 @@ def fetch_odds():
     return response.json()
 
 @st.cache_data(ttl=60)
-def fetch_player_props():
-    response = requests.get(API_URL, params=player_props_params)
+def fetch_player_props(event_id):
+    url = API_EVENT_URL.format(event_id=event_id)
+    response = requests.get(url, params={'apiKey': API_KEY, 'markets': 'player_points', 'oddsFormat': 'american'})
     if response.status_code != 200:
-        st.error(f"Failed to load player props: {response.status_code} - {response.text}")
         return []
     return response.json()
 
@@ -56,7 +49,6 @@ def implied_prob(odds):
 
 # --- Data Processing ---
 odds_data = fetch_odds()
-player_data = fetch_player_props()
 games, props = [], []
 for game in odds_data:
     matchup = f"{game['away_team']} @ {game['home_team']}"
@@ -80,26 +72,25 @@ for game in odds_data:
             label = 'Over' if 'Over' in outcome['name'] else 'Under'
             row[f"{book} Total - {label}"] = f"{outcome['point']} ({outcome['price']})"
 
-    games.append(row)
+    # Fetch props for each game (per event_id)
+    player_markets = fetch_player_props(game['id'])
+    for market in player_markets:
+        if market['key'] == 'player_points':
+            book = market['bookmaker_key']
+            for outcome in market.get('outcomes', []):
+                props.append({
+                    'Timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                    'Matchup': matchup,
+                    'Start Time': start_time,
+                    'Team': game['home_team'] if outcome['name'] in game['home_team'] else game['away_team'],
+                    'Bookmaker': book,
+                    'Player': outcome['name'],
+                    'Prop': 'Points',
+                    'Line': outcome.get('point'),
+                    'Odds': outcome.get('price')
+                })
 
-for game in player_data:
-    matchup = f"{game['away_team']} @ {game['home_team']}"
-    start_time = datetime.fromisoformat(game['commence_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M UTC')
-    for bookmaker in game['bookmakers']:
-        book = bookmaker['title']
-        outcomes_by_market = {m['key']: m['outcomes'] for m in bookmaker['markets']}
-        for outcome in outcomes_by_market.get('player_points', []):
-            props.append({
-                'Timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
-                'Matchup': matchup,
-                'Start Time': start_time,
-                'Team': game['home_team'] if outcome['name'] in game['home_team'] else game['away_team'],
-                'Bookmaker': book,
-                'Player': outcome['name'],
-                'Prop': 'Points',
-                'Line': outcome['point'],
-                'Odds': outcome['price']
-            })
+    games.append(row)
 
 # --- DataFrames ---
 df = pd.DataFrame(games)
@@ -144,9 +135,9 @@ with tab2:
 with tab3:
     st.subheader("\U0001F3AF Player Points Props by Team")
     if not df_props.empty:
-        selected_team = st.selectbox("Select a team:", sorted(df_props['Team'].unique()))
+        selected_team = st.selectbox("Select a team:", sorted(df_props['Team'].dropna().unique()))
         filtered = df_props[df_props['Team'] == selected_team]
-        selected_player = st.selectbox("Filter by player (optional):", ["All"] + sorted(filtered['Player'].unique()))
+        selected_player = st.selectbox("Filter by player (optional):", ["All"] + sorted(filtered['Player'].dropna().unique()))
         if selected_player != "All":
             st.dataframe(filtered[filtered['Player'] == selected_player], use_container_width=True)
         else:
