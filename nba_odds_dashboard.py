@@ -32,6 +32,12 @@ def get_all_teams():
         response = requests.get(f"{BALLDONTLIE_BASE}/teams")
         response.raise_for_status()
         return response.json()
+    except requests.exceptions.JSONDecodeError:
+        st.error("Invalid JSON received from balldontlie.io teams endpoint.")
+        return {"data": []}
+    except Exception as e:
+        st.warning(f"Failed to fetch teams from balldontlie.io: {e}")
+        return {"data": []}
     except Exception as e:
         st.warning(f"Failed to fetch teams from balldontlie.io: {e}")
         return {"data": []}
@@ -42,18 +48,29 @@ def get_players(per_page=100):
         response = requests.get(f"{BALLDONTLIE_BASE}/players?per_page={per_page}")
         response.raise_for_status()
         return response.json()
+    except requests.exceptions.JSONDecodeError:
+        st.error("Invalid JSON received from balldontlie.io players endpoint.")
+        return {"data": []}
+    except Exception as e:
+        st.warning(f"Failed to fetch players from balldontlie.io: {e}")
+        return {"data": []}
     except Exception as e:
         st.warning(f"Failed to fetch players from balldontlie.io: {e}")
         return {"data": []}
 
 @st.cache_data(ttl=60)
 def fetch_odds():
-    response = requests.get(API_URL, params=params)
-    if response.status_code != 200:
-        st.error(f"Failed to load odds: {response.status_code} - {response.text}")
+    try:
+        response = requests.get(API_URL, params=params)
+        response.raise_for_status()
+        st.caption(f"Requests remaining: {response.headers.get('x-requests-remaining')}, Used: {response.headers.get('x-requests-used')}")
+        return response.json()
+    except requests.exceptions.JSONDecodeError:
+        st.error("Invalid JSON received from The Odds API.")
         return []
-    st.caption(f"Requests remaining: {response.headers.get('x-requests-remaining')}, Used: {response.headers.get('x-requests-used')}")
-    return response.json()
+    except Exception as e:
+        st.error(f"Failed to load odds: {e}")
+        return []
 
 @st.cache_data(ttl=60)
 def fetch_player_props(event_id):
