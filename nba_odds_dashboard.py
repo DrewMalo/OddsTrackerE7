@@ -8,6 +8,9 @@ df = pd.DataFrame()
 df_props = pd.DataFrame()
 csv_file = 'nba_odds_history.csv'
 
+# --- API Key for balldontlie.io ---
+BALLDONTLIE_API_KEY = '498117bc-f941-454d-a142-6aa8b6778cec'
+
 # --- Tabs Layout ---
 tabs = st.tabs([
     "\U0001F4CA Game Odds",
