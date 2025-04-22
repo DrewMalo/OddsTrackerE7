@@ -12,9 +12,15 @@ st.title("NBA Odds Tracker \U0001F3C0")
 st.caption("Real-time NBA lines: Moneylines, Spreads, Totals & Player Props from FanDuel, DraftKings, and BetMGM")
 
 # --- API Setup ---
+from balldontlie import BalldontlieAPI
+
 ODDS_API_KEY = '0c03cbe55c11b193e6d23407c48cc604'  # the-odds-api.com
-BALLDONTLIE_API_KEY = '498117bc-f941-454d-a142-6aa8b6778cec'  # if needed in future
+BALLDONTLIE_API_KEY = '498117bc-f941-454d-a142-6aa8b6778cec'
 BALLDONTLIE_BASE = 'https://www.balldontlie.io/api/v1'
+
+# balldontlie.io SDK initialization
+api = BalldontlieAPI(api_key=BALLDONTLIE_API_KEY)
+
 API_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/odds'
 API_EVENT_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/markets'
 
@@ -29,11 +35,9 @@ params = {
 @st.cache_data(ttl=600)
 def get_all_teams():
     try:
-        response = requests.get(f"{BALLDONTLIE_BASE}/teams")
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.JSONDecodeError:
-        st.error("Invalid JSON received from balldontlie.io teams endpoint.")
+        return api.nba.teams.list()
+    except Exception as e:
+        st.warning(f"balldontlie.io SDK failed to fetch teams: {e}")
         return {"data": []}
     except Exception as e:
         st.warning(f"Failed to fetch teams from balldontlie.io: {e}")
@@ -45,11 +49,9 @@ def get_all_teams():
 @st.cache_data(ttl=600)
 def get_players(per_page=100):
     try:
-        response = requests.get(f"{BALLDONTLIE_BASE}/players?per_page={per_page}")
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.JSONDecodeError:
-        st.error("Invalid JSON received from balldontlie.io players endpoint.")
+        return api.nba.players.list(per_page=per_page)
+    except Exception as e:
+        st.warning(f"balldontlie.io SDK failed to fetch players: {e}")
         return {"data": []}
     except Exception as e:
         st.warning(f"Failed to fetch players from balldontlie.io: {e}")
