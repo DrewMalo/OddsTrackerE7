@@ -1,25 +1,123 @@
 # nba_odds_tracker.py
 import streamlit as st
+import requests
 import pandas as pd
-import os  # Fix: Import os to use os.path.exists
+from datetime import datetime
+import os
+import matplotlib.pyplot as plt
 
-# --- Placeholder data to ensure app runs before full data fetch ---
-df = pd.DataFrame()
-df_props = pd.DataFrame()
+# --- Title/Header ---
+st.set_page_config(page_title="NBA Odds Tracker", layout="wide")
+st.title("NBA Odds Tracker \U0001F3C0")
+st.caption("Real-time NBA lines: Moneylines, Spreads, Totals & Player Props from FanDuel, DraftKings, and BetMGM")
+
+# --- API Setup ---
+API_KEY = '0c03cbe55c11b193e6d23407c48cc604'  # the-odds-api.com
+BALLDONTLIE_API_KEY = '498117bc-f941-454d-a142-6aa8b6778cec'  # balldontlie.io
+API_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/odds'
+API_EVENT_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/markets'
+BALLDONTLIE_BASE = 'https://api.balldontlie.io/v1'
+
+params = {
+    'apiKey': API_KEY,
+    'regions': 'us',
+    'markets': 'h2h,spreads,totals',
+    'oddsFormat': 'american',
+    'bookmakers': 'fanduel,draftkings,betmgm'
+}
+
+@st.cache_data(ttl=60)
+def fetch_odds():
+    response = requests.get(API_URL, params=params)
+    if response.status_code != 200:
+        st.error(f"Failed to load odds: {response.status_code} - {response.text}")
+        return []
+    st.caption(f"Requests remaining: {response.headers.get('x-requests-remaining')}, Used: {response.headers.get('x-requests-used')}")
+    return response.json()
+
+@st.cache_data(ttl=60)
+def fetch_player_props(event_id):
+    url = API_EVENT_URL.format(event_id=event_id)
+    response = requests.get(url, params={'apiKey': API_KEY, 'markets': 'player_points', 'oddsFormat': 'american'})
+    if response.status_code != 200:
+        return []
+    return response.json()
+
+@st.cache_data(ttl=600)
+def balldontlie_get(endpoint):
+    headers = {"Authorization": f"Bearer {BALLDONTLIE_API_KEY}"}
+    response = requests.get(f"{BALLDONTLIE_BASE}/{endpoint}", headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.error(f"Failed to fetch {endpoint}: {response.status_code}")
+        return {}
+
+# --- Helper ---
+def implied_prob(odds):
+    if odds > 0:
+        return 100 / (odds + 100)
+    else:
+        return -odds / (-odds + 100)
+
+# --- Data Processing ---
+odds_data = fetch_odds()
+games, props = [], []
+for game in odds_data:
+    matchup = f"{game['away_team']} @ {game['home_team']}"
+    start_time = datetime.fromisoformat(game['commence_time'].replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M UTC')
+    row = {'Timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'Matchup': matchup, 'Start Time': start_time}
+
+    for bookmaker in game['bookmakers']:
+        book = bookmaker['title']
+        outcomes_by_market = {m['key']: m['outcomes'] for m in bookmaker['markets']}
+
+        for outcome in outcomes_by_market.get('h2h', []):
+            team = outcome['name']
+            row[f"{book} ML - {team}"] = outcome['price']
+            row[f"{book} % - {team}"] = round(implied_prob(outcome['price']) * 100, 1)
+
+        for outcome in outcomes_by_market.get('spreads', []):
+            team = outcome['name']
+            row[f"{book} Spread - {team}"] = f"{outcome['point']} ({outcome['price']})"
+
+        for outcome in outcomes_by_market.get('totals', []):
+            label = 'Over' if 'Over' in outcome['name'] else 'Under'
+            row[f"{book} Total - {label}"] = f"{outcome['point']} ({outcome['price']})"
+
+    try:
+        player_markets = fetch_player_props(game['id'])
+        for market in player_markets:
+            if market['key'] == 'player_points':
+                for bookmaker in market.get('bookmakers', []):
+                    book = bookmaker['title']
+                    for outcome in bookmaker.get('outcomes', []):
+                        props.append({
+                            'Timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                            'Matchup': matchup,
+                            'Start Time': start_time,
+                            'Team': game['home_team'] if outcome['name'] in game['home_team'] else game['away_team'],
+                            'Bookmaker': book,
+                            'Player': outcome['name'],
+                            'Prop': 'Points',
+                            'Line': outcome.get('point'),
+                            'Odds': outcome.get('price')
+                        })
+    except Exception as e:
+        st.warning(f"Failed to load props for game: {matchup}")
+
+    games.append(row)
+
+# --- DataFrames ---
+df = pd.DataFrame(games)
+df_props = pd.DataFrame(props)
+
+# --- Save to CSV (disabled for Streamlit Cloud) ---
 csv_file = 'nba_odds_history.csv'
-
-# --- API Key for balldontlie.io ---
-BALLDONTLIE_API_KEY = '498117bc-f941-454d-a142-6aa8b6778cec'
+# Disabled CSV saving for deployment compatibility
 
 # --- Tabs Layout ---
-tabs = st.tabs([
-    "\U0001F4CA Game Odds",
-    "\U0001F4C8 Line Movement",
-    "\U0001F3AF Player Props",
-    "\U0001F9D1‍\U0001F3CB️ Player Stats",
-    "\U0001F3C0 Shooting Averages"
-])
-tab1, tab2, tab3, tab4, tab5 = tabs
+tab1, tab2, tab3 = st.tabs(["\U0001F4CA Game Odds", "\U0001F4C8 Line Movement", "\U0001F3AF Player Props"])
 
 with tab1:
     st.subheader("\U0001F4CA Game Odds: Moneylines, Spreads, Totals")
@@ -32,11 +130,8 @@ with tab1:
             best_col = max(team_cols, key=lambda col: row[col] if pd.notna(row[col]) else -9999)
             styles[df.columns.get_loc(best_col)] = 'background-color: lightgreen'
         return styles
-    if not df.empty:
-        df_display = df.style.apply(highlight_best, axis=1)
-        st.dataframe(df_display, use_container_width=True)
-    else:
-        st.info("No game odds data available.")
+    df_display = df.style.apply(highlight_best, axis=1)
+    st.dataframe(df_display, use_container_width=True)
 
 with tab2:
     st.subheader("\U0001F4C8 Moneyline Line Movement")
@@ -66,32 +161,7 @@ with tab3:
     else:
         st.info("No player points props available at the moment.")
 
-with tab4:
-    st.subheader("\U0001F9D1‍\U0001F3CB️ Player Stats from balldontlie.io")
-    try:
-        from nba_odds_tracker import get_stats
-        stats = get_stats()
-        stats_df = pd.DataFrame(stats['data'])
-        if not stats_df.empty:
-            st.dataframe(stats_df.head(100), use_container_width=True)
-        else:
-            st.info("No player stats available.")
-    except Exception as e:
-        st.error("Error loading player stats.")
-
-with tab5:
-    st.subheader("\U0001F3C0 Shooting Averages (2024 Regular Season)")
-    try:
-        from nba_odds_tracker import get_shooting_averages
-        shooting = get_shooting_averages()
-        shooting_df = pd.DataFrame(shooting['data'])
-        if not shooting_df.empty:
-            st.dataframe(shooting_df, use_container_width=True)
-        else:
-            st.info("No shooting averages data available.")
-    except Exception as e:
-        st.error("Error loading shooting averages.")
-
 # --- Footer ---
 st.markdown("---")
 st.caption("Updated every 60 seconds — Line movement storage disabled on Streamlit Cloud for compatibility.")
+
