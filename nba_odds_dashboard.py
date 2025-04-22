@@ -28,11 +28,23 @@ params = {
 
 @st.cache_data(ttl=600)
 def get_all_teams():
-    return requests.get(f"{BALLDONTLIE_BASE}/teams").json()
+    try:
+        response = requests.get(f"{BALLDONTLIE_BASE}/teams")
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        st.warning(f"Failed to fetch teams from balldontlie.io: {e}")
+        return {"data": []}
 
 @st.cache_data(ttl=600)
 def get_players(per_page=100):
-    return requests.get(f"{BALLDONTLIE_BASE}/players?per_page={per_page}").json()
+    try:
+        response = requests.get(f"{BALLDONTLIE_BASE}/players?per_page={per_page}")
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        st.warning(f"Failed to fetch players from balldontlie.io: {e}")
+        return {"data": []}
 
 @st.cache_data(ttl=60)
 def fetch_odds():
