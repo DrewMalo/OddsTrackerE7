@@ -1,11 +1,16 @@
-# nba_odds_tracker.py
-import streamlit as st
+# This script requires the Streamlit environment to run.
+# To resolve the ModuleNotFoundError, ensure you're executing this in a Streamlit-compatible environment.
+
+try:
+    import streamlit as st
+except ModuleNotFoundError:
+    raise ImportError("Streamlit is not installed. Please install it via 'pip install streamlit' to run this app.")
+
 import requests
 import pandas as pd
 from datetime import datetime
 import os
 import matplotlib.pyplot as plt
-from balldontlie import BalldontlieAPI
 
 # --- Title/Header ---
 st.set_page_config(page_title="NBA Odds Tracker", layout="wide")
@@ -14,10 +19,9 @@ st.caption("Real-time NBA lines: Moneylines, Spreads, Totals & Player Props from
 
 # --- API Setup ---
 API_KEY = '0c03cbe55c11b193e6d23407c48cc604'  # the-odds-api.com
-BALLDONTLIE_API_KEY = '498117bc-f941-454d-a142-6aa8b6778cec'  # balldontlie.io
+BALLDONTLIE_BASE = '498117bc-f941-454d-a142-6aa8b6778cec'
 API_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/odds'
 API_EVENT_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/markets'
-BALLDONTLIE_BASE = 'https://api.balldontlie.io/v1'
 
 params = {
     'apiKey': API_KEY,
@@ -27,8 +31,13 @@ params = {
     'bookmakers': 'fanduel,draftkings,betmgm'
 }
 
-# --- Initialize balldontlie.io API Client ---
-api = BalldontlieAPI(api_key=BALLDONTLIE_API_KEY)
+@st.cache_data(ttl=600)
+def get_all_teams():
+    return requests.get(f"{BALLDONTLIE_BASE}/teams").json()
+
+@st.cache_data(ttl=600)
+def get_players(per_page=100):
+    return requests.get(f"{BALLDONTLIE_BASE}/players?per_page={per_page}").json()
 
 @st.cache_data(ttl=60)
 def fetch_odds():
@@ -46,15 +55,6 @@ def fetch_player_props(event_id):
     if response.status_code != 200:
         return []
     return response.json()
-
-# --- balldontlie.io Utilities ---
-@st.cache_data(ttl=600)
-def get_all_teams():
-    return api.nba.teams.list()
-
-@st.cache_data(ttl=600)
-def get_players_page(per_page=25):
-    return api.nba.players.list(per_page=per_page)
 
 # --- Helper ---
 def implied_prob(odds):
@@ -117,10 +117,9 @@ df_props = pd.DataFrame(props)
 
 # --- Save to CSV (disabled for Streamlit Cloud) ---
 csv_file = 'nba_odds_history.csv'
-# Disabled CSV saving for deployment compatibility
 
 # --- Tabs Layout ---
-tab1, tab2, tab3 = st.tabs(["\U0001F4CA Game Odds", "\U0001F4C8 Line Movement", "\U0001F3AF Player Props"])
+tab1, tab2, tab3, tab4 = st.tabs(["\U0001F4CA Game Odds", "\U0001F4C8 Line Movement", "\U0001F3AF Player Props", "\U0001F9D1‍\U0001F3CB️ Explorer"])
 
 with tab1:
     st.subheader("\U0001F4CA Game Odds: Moneylines, Spreads, Totals")
@@ -163,6 +162,25 @@ with tab3:
             st.dataframe(filtered, use_container_width=True)
     else:
         st.info("No player points props available at the moment.")
+
+with tab4:
+    st.subheader("\U0001F9D1‍\U0001F3CB️ Player + Team Explorer")
+    try:
+        team_data = get_all_teams()['data']
+        player_data = get_players(per_page=100)['data']
+        team_names = [team['full_name'] for team in team_data]
+        player_names = [f"{p['first_name']} {p['last_name']}" for p in player_data]
+        view = st.radio("Explore by:", ["Teams", "Players"], horizontal=True)
+        if view == "Teams":
+            t = st.selectbox("Select team:", team_names)
+            selected = [x for x in team_data if x['full_name'] == t][0]
+            st.json(selected)
+        else:
+            p = st.selectbox("Select player:", player_names)
+            selected = [x for x in player_data if f"{x['first_name']} {x['last_name']}" == p][0]
+            st.json(selected)
+    except:
+        st.warning("Could not load player/team data.")
 
 # --- Footer ---
 st.markdown("---")
