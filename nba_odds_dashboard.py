@@ -5,6 +5,7 @@ import pandas as pd
 from datetime import datetime
 import os
 import matplotlib.pyplot as plt
+from balldontlie import BalldontlieAPI
 
 # --- Title/Header ---
 st.set_page_config(page_title="NBA Odds Tracker", layout="wide")
@@ -26,6 +27,9 @@ params = {
     'bookmakers': 'fanduel,draftkings,betmgm'
 }
 
+# --- Initialize balldontlie.io API Client ---
+api = BalldontlieAPI(api_key=BALLDONTLIE_API_KEY)
+
 @st.cache_data(ttl=60)
 def fetch_odds():
     response = requests.get(API_URL, params=params)
@@ -43,15 +47,14 @@ def fetch_player_props(event_id):
         return []
     return response.json()
 
+# --- balldontlie.io Utilities ---
 @st.cache_data(ttl=600)
-def balldontlie_get(endpoint):
-    headers = {"Authorization": f"Bearer {BALLDONTLIE_API_KEY}"}
-    response = requests.get(f"{BALLDONTLIE_BASE}/{endpoint}", headers=headers)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        st.error(f"Failed to fetch {endpoint}: {response.status_code}")
-        return {}
+def get_all_teams():
+    return api.nba.teams.list()
+
+@st.cache_data(ttl=600)
+def get_players_page(per_page=25):
+    return api.nba.players.list(per_page=per_page)
 
 # --- Helper ---
 def implied_prob(odds):
@@ -164,4 +167,3 @@ with tab3:
 # --- Footer ---
 st.markdown("---")
 st.caption("Updated every 60 seconds — Line movement storage disabled on Streamlit Cloud for compatibility.")
-
